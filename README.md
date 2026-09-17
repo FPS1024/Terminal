@@ -258,6 +258,6 @@ App 图标提取自 macOS 内置的 `Terminal.app`（`Contents/Resources/Termina
 
 本项目源代码以 **MIT License** 发布，完整条款见 [LICENSE](LICENSE)。
 
-Copyright (c) 2026 Kaysarjan Kasim <ceaser.k.w@outlook.com>
+Copyright (c) 2026 FPS1024 <ceaser.k.w@outlook.com>
 
 如前所述，App 图标来源于 Apple 的 `Terminal.app`，不在该许可的授权范围内。
