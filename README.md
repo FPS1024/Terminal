@@ -121,8 +121,8 @@ make release    # 上面三个一起生成，并打印体积与 SHA256
 | `out/Terminal_1.0.0.ipa` | ipa 包，内含 `Payload/Terminal.app`，供 TrollStore 等使用 |
 | `build/` | 目标文件、图标、打包临时目录等中间产物 |
 
-`make deb` 只产出 rootless 一种包。同样的源码会打出字节一致的 deb 与 ipa，便于核对
-Release 校验值；版本号可在命令行覆盖，例如 `make release VERSION=1.0.1`。
+`make deb` 只产出 rootless 一种包。同一台构建机上重复打包，deb 与 ipa 都是字节一致的，
+便于核对 Release 校验值；版本号可在命令行覆盖，例如 `make release VERSION=1.0.1`。
 
 主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
 
