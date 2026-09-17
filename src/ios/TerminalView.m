@@ -518,7 +518,7 @@ static NSString *TermUniCharToString(UTF32Char c)
     CGContextFillRect(ctx, rect);
     if (!self.vt || _cellW <= 0) return;
     [self ensureCache];
-    CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
+    CGContextSetTextMatrix(ctx, CGAffineTransformMakeScale(1, -1));
     CGContextSetShouldSmoothFonts(ctx, NO);
 
     int y0 = (int)floor(rect.origin.y / _cellH);
