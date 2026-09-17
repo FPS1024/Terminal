@@ -1,67 +1,68 @@
 #!/bin/sh
 #
-# 在 macOS 上直接把 App 打成 .deb（这台机器没有 dpkg，所以自己拼 ar 归档）
+# 把 out/Terminal.app 打成 rootless 越狱用的 .deb。
 #
-#   ROOTLESS=1 sh packaging/mkdeb.sh     # 无根越狱(Dopamine/Palera1n)，装到 /var/jb
-#   sh packaging/mkdeb.sh                # 传统有根越狱，装到 /Applications
+#   - 只产出 rootless 一种包：安装到 /var/jb/Applications/Terminal.app
+#   - 架构标记为 iphoneos-arm64（Dopamine / Palera1n 等 rootless 越狱）
+#   - 构建机上没有 dpkg，所以自己拼 ar 归档，不依赖 dpkg-deb
+#   - 归档不带 gzip 时间戳，同样的输入会得到同样的包（方便 Release 校验）
+#
+# 一般由 `make deb` 调用，也可以手动执行：
+#   sh packaging/mkdeb.sh
 #
 set -e
 
 APP_NAME=${APP_NAME:-Terminal}
 BUNDLE_ID=${BUNDLE_ID:-com.malacaihongpi.terminal}
 VERSION=${VERSION:-1.0.0}
-ROOTLESS=${ROOTLESS:-0}
-BUILD=${BUILD:-build}
-OUT=${OUT:-dist}
+DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
+MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 
-if [ "$ROOTLESS" = "1" ]; then
-    PREFIX=/var/jb
-    DEBARCH=iphoneos-arm64
-else
-    PREFIX=
-    DEBARCH=iphoneos-arm
-fi
+APP_DIR=${APP_DIR:-out/$APP_NAME.app}
+OUT_DEB=${OUT_DEB:-out/${APP_NAME}_${VERSION}_${DEB_ARCH}.deb}
+WORK=${WORK:-build/deb}
 
-APP_SRC="$BUILD/$APP_NAME.app"
-if [ ! -d "$APP_SRC" ]; then
-    echo "找不到 $APP_SRC，先跑 make ios" >&2
+PREFIX=/var/jb                      # rootless 前缀，dpkg 会把它映射到真实 jb 目录
+APP_DEST="$PREFIX/Applications"     # 真实安装路径：/var/jb/Applications
+
+if [ ! -d "$APP_DIR" ]; then
+    echo "找不到 $APP_DIR，先跑 make ios" >&2
     exit 1
 fi
 
-WORK="$OUT/pkg"
 rm -rf "$WORK"
-mkdir -p "$WORK/control" "$WORK/root$PREFIX/Applications"
+mkdir -p "$WORK/control" "$WORK/root$APP_DEST"
 
 # ---- 有效载荷 ----
-cp -R "$APP_SRC" "$WORK/root$PREFIX/Applications/"
+cp -R "$APP_DIR" "$WORK/root$APP_DEST/"
 find "$WORK/root" -name '.DS_Store' -delete 2>/dev/null || true
 
 # ---- control ----
 SIZE=$(du -sk "$WORK/root" | awk '{print $1}')
-cat > "$WORK/control/control" <<EOF
+cat > "$WORK/control/control" <<CONTROL
 Package: $BUNDLE_ID
-Name: Terminal
+Name: $APP_NAME
 Version: $VERSION
-Architecture: $DEBARCH
+Architecture: $DEB_ARCH
 Description: 越狱设备上的终端 App
  支持 UTF-8 / 中文输入(系统拼音候选条) / 中文与 emoji 宽度对齐 /
  256 色与真彩色 / 回滚与 reflow / 多会话标签 / 硬件键盘与快捷键条。
-Maintainer: malacaihongpi
-Author: malacaihongpi
+Maintainer: $MAINTAINER
+Author: $MAINTAINER
 Section: Utilities
 Priority: optional
 Installed-Size: $SIZE
 Depends: firmware (>= 12.0)
-EOF
+CONTROL
 
-cat > "$WORK/control/postinst" <<'EOF'
+cat > "$WORK/control/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
 JB=""
 [ -d /var/jb ] && JB=/var/jb
 APP="$JB/Applications/Terminal.app"
 [ -d "$APP" ] || APP=/Applications/Terminal.app
-for U in "$JB/usr/bin/uicache" /usr/bin/uicache "$JB/var/jb/usr/bin/uicache"; do
+for U in "$JB/usr/bin/uicache" /usr/bin/uicache; do
     if [ -x "$U" ]; then
         "$U" -a >/dev/null 2>&1 || "$U" -p "$APP" >/dev/null 2>&1 || true
         break
@@ -69,9 +70,9 @@ for U in "$JB/usr/bin/uicache" /usr/bin/uicache "$JB/var/jb/usr/bin/uicache"; do
 done
 killall -HUP SpringBoard >/dev/null 2>&1 || true
 exit 0
-EOF
+POSTINST
 
-cat > "$WORK/control/postrm" <<'EOF'
+cat > "$WORK/control/postrm" <<'POSTRM'
 #!/bin/sh
 set -e
 JB=""
@@ -81,26 +82,31 @@ for U in "$JB/usr/bin/uicache" /usr/bin/uicache; do
 done
 killall -HUP SpringBoard >/dev/null 2>&1 || true
 exit 0
-EOF
+POSTRM
 chmod 0755 "$WORK/control/postinst" "$WORK/control/postrm"
 
-# ---- 三个 tar 成员 ----
-TARFLAGS="--format=gnutar --uid 0 --gid 0 --uname root --gname wheel"
-if ! tar $TARFLAGS -cf /dev/null . 2>/dev/null; then
-    TARFLAGS="--format=gnutar --owner=0 --group=0"
+# ---- tar 参数：bsdtar 与 GNU tar 的归属写法不同，实测一次 ----
+set -- --format=gnutar --uid 0 --gid 0 --uname root --gname wheel --options gzip:!timestamp
+if ! LC_ALL=C tar "$@" -czf /dev/null "$WORK/control/control" 2>/dev/null; then
+    set -- --format=gnutar --owner=0 --group=0
 fi
+TARFLAGS="$*"
 
+# ---- 归一化时间戳：同样的源码总是产出同样的 deb ----
+stamp_mtimes() { find "$1" -exec touch -h -t 200001010000.00 {} + 2>/dev/null || true; }
+stamp_mtimes "$WORK"
+
+# ---- deb 的三个成员 ----
 export COPYFILE_DISABLE=1
-( cd "$WORK/control" && tar $TARFLAGS -czf ../control.tar.gz . )
-( cd "$WORK/root"    && tar $TARFLAGS -czf ../data.tar.gz . )
+( cd "$WORK/control" && LC_ALL=C tar $TARFLAGS -czf ../control.tar.gz . )
+( cd "$WORK/root"    && LC_ALL=C tar $TARFLAGS -czf ../data.tar.gz . )
 printf '2.0\n' > "$WORK/debian-binary"
+stamp_mtimes "$WORK"      # 三个成员的 mtime 会被写进 ar 头，也要归一化
 
 # ---- ar 归档 ----
-mkdir -p "$OUT"
-DEB="$OUT/${APP_NAME}_${VERSION}_${DEBARCH}.deb"
-rm -f "$DEB"
-ABS=$(cd "$OUT" && pwd)
-( cd "$WORK" && ar rc "$ABS/$(basename "$DEB")" debian-binary control.tar.gz data.tar.gz )
+mkdir -p "$(dirname "$OUT_DEB")"
+rm -f "$OUT_DEB"
+ABS_DEB=$(cd "$(dirname "$OUT_DEB")" && pwd)/$(basename "$OUT_DEB")
+( cd "$WORK" && ar rc "$ABS_DEB" debian-binary control.tar.gz data.tar.gz )
 
-echo "DEB -> $DEB"
-ls -lh "$DEB" | awk '{print "     size:", $5}'
+echo "  DEB   $OUT_DEB  ($(du -h "$OUT_DEB" | cut -f1))  安装到 $APP_DEST/$APP_NAME.app"

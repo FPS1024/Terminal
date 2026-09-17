@@ -1,5 +1,7 @@
+# 中间产物
 build/
-dist/
-.DS_Store
+# 发布产物
+out/
 *.o
 *.dSYM/
+.DS_Store

@@ -105,14 +105,31 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 ### 4.2 构建命令
 
 ```sh
-make test          # 主机端核心单元测试
-make dump          # 主机端联调工具：启动真实 Shell 并输出最终屏幕内容
-make ios           # 编译 arm64 App（最低 iOS 12），结束时自动执行 ldid 伪签名
-make deb           # 打包为传统越狱 deb（安装至 /Applications）
-make deb-rootless  # 打包为无根越狱 deb（安装至 /var/jb/Applications）
+make            # 打印可用目标
+make ios        # 编译 App                  -> out/Terminal.app
+make deb        # 打包 rootless 越狱 deb 包  -> out/Terminal_1.0.0_iphoneos-arm64.deb
+make ipa        # 打包 ipa                  -> out/Terminal_1.0.0.ipa
+make release    # 上面三个一起生成，并打印体积与 SHA256
 ```
 
-构建产物位于 `build/Terminal.app`，安装包位于 `dist/`。
+发布产物统一放在 `out/`，中间文件统一放在 `build/`，两者都不纳入版本控制：
+
+| 路径 | 内容 |
+| --- | --- |
+| `out/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名） |
+| `out/Terminal_1.0.0_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `out/Terminal_1.0.0.ipa` | ipa 包，内含 `Payload/Terminal.app`，供 TrollStore 等使用 |
+| `build/` | 目标文件、图标、打包临时目录等中间产物 |
+
+`make deb` 只产出 rootless 一种包。同样的源码会打出字节一致的 deb 与 ipa，便于核对
+Release 校验值；版本号可在命令行覆盖，例如 `make release VERSION=1.0.1`。
+
+主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
+
+```sh
+make test          # 主机端核心单元测试
+make dump          # 主机端联调工具：启动真实 Shell 并输出最终屏幕内容
+```
 
 在不使用模拟器与真机的前提下验证渲染效果：
 
@@ -125,26 +142,32 @@ make deb-rootless  # 打包为无根越狱 deb（安装至 /var/jb/Applications�
 **方式一：deb 包**
 
 ```sh
-make deb-rootless        # 依据越狱类型选择对应目标
-# 将 dist/Terminal_1.0.0_iphoneos-arm64.deb 传输至设备后执行：
+make deb
+# 把 out/Terminal_1.0.0_iphoneos-arm64.deb 传到设备后执行：
 dpkg -i Terminal_1.0.0_iphoneos-arm64.deb
 ```
 
-`postinst` 脚本会自动执行 `uicache` 并刷新 SpringBoard。
+安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` 脚本会自动执行 `uicache`
+并刷新 SpringBoard。
 
-**方式二：直接推送**
+**方式二：ipa**
+
+```sh
+make ipa
+# out/Terminal_1.0.0.ipa 用 TrollStore 或 AltStore 安装
+```
+
+**方式三：直接推送**
 
 ```sh
 make install DEVICE=root@192.168.1.23
 ```
 
-该目标会完成打包、传输、解包至 `/Applications`（或 `/var/jb/Applications`）并执行
-`uicache`。
+该目标会完成打包、传输、解包至 `/var/jb/Applications`（有根越狱为 `/Applications`）
+并执行 `uicache`。
 
 > 若未安装 `ldid`，产物为未签名状态。已安装 AppSync 或关闭了签名校验的设备可直接运行；
 > 否则请将 `ldid` 加入 `PATH` 后重新执行 `make ios`。
-
----
 
 ## 五、使用说明
 
@@ -203,6 +226,8 @@ confirm_paste   = 1
 ## 六、项目结构
 
 ```
+Makefile                             构建入口（ios / deb / ipa / release / test / dump）
+
 src/core/vt.h  vt.c                  终端仿真核心（纯 C，可单元测试）
 src/core/vt_unicode.h  .c            UTF-8 编解码与东亚字符宽度表
 src/host/pty.h  pty.c                forkpty 会话封装
@@ -212,12 +237,19 @@ src/ios/TerminalSession.h  .m        Vt 与 PTY 的粘合层，含后台读取�
 src/ios/TerminalViewController.h .m  多会话管理、快捷键条、手势接线
 src/ios/Settings.h  .m               主题定义与配置读写
 src/ios/SettingsViewController.h .m  设置界面
-host/termdump.c                      构建机上的联调工具
-tools/mkicon.c                       App 图标生成
-packaging/mkdeb.sh                   在 macOS 上构造 deb（不依赖 dpkg）
-```
+src/ios/Info.plist                   App 清单
+src/ios/LaunchScreen.storyboard      启动画面
 
----
+tests/test_vt.c                      核心单元测试（164 项断言）
+tools/termdump.c                     构建机上的联调工具
+tools/mkicon.c                       App 图标生成
+packaging/mkdeb.sh                   rootless deb 打包（不依赖 dpkg）
+packaging/mkipa.sh                   ipa 打包
+
+assets/AppIconSource.png             图标源图（来自 macOS 自带 Terminal.app）
+build/                               中间产物，不纳入版本控制
+out/                                 发布产物，不纳入版本控制
+```
 
 ## 七、测试
 
@@ -250,7 +282,7 @@ App 图标提取自 macOS 内置的 `Terminal.app`（`Contents/Resources/Termina
 
 **该图标为 Apple 的美术资源，不属于本项目代码，亦不适用本项目的开源许可。**
 如需在公开分发场景中使用，请自行替换为拥有合法授权的图标；移除
-`src/ios/AppIconSource.png` 后，构建会自动回退到 `tools/mkicon.c` 内置生成的图标。
+`assets/AppIconSource.png` 后，构建会自动回退到 `tools/mkicon.c` 内置生成的图标。
 
 ---
 
