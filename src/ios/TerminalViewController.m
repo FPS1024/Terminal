@@ -66,6 +66,8 @@
     _term.delegate = self;
     _term.theme = TermThemeNamed([[TermSettings shared].themeName UTF8String]);
     [self.view addSubview:_term];
+    /* 终端视图后加，默认盖在顶栏上面；标签条显隐时顶栏会变高，必须让它始终在最上面 */
+    [self.view bringSubviewToFront:_topBar];
 
     _keyBar = [self buildKeyBar];
     _term.keyBar = _keyBar;
@@ -338,6 +340,7 @@
 
 - (void)rebuildTabs
 {
+    BOOL tabsWereHidden = _tabScroll.hidden;
     for (UIButton *b in _tabButtons) [b removeFromSuperview];
     [_tabButtons removeAllObjects];
     if (_sessions.count < 2) {
@@ -358,6 +361,9 @@
         }
     }
     [self refreshTabHighlight];
+    /* 标签条显隐会改顶栏高度，得马上重排：否则新建/关闭会话后要等下一次
+       布局（比如进设置页再返回）界面才会刷新。 */
+    if (_tabScroll.hidden != tabsWereHidden) [self layoutBars];
 }
 
 - (void)refreshTabHighlight
