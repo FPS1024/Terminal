@@ -550,6 +550,123 @@ static void test_reflow(void)
     row(&f, 2, r, sizeof(r));
     CHECK_STR(r, "中文");
     fix_free(&f);
+
+    /* 键盘弹出/收起只改行数，不能把两行并成一行。
+       宽字符结尾的行 + 后面跟一行，是以前踩过的坑。 */
+    char big[128];
+    fix_init(&f, 40, 8, 100);
+    feed(&f, "prompt$ echo 中文和 ASCII 混排\r\n");
+    feed(&f, "root@iphone:~#");
+    vt_resize(f.vt, 40, 6);
+    row(&f, 0, big, sizeof(big));
+    CHECK_STR(big, "prompt$ echo 中文和 ASCII 混排");
+    row(&f, 1, big, sizeof(big));
+    CHECK_STR(big, "root@iphone:~#");
+    vt_resize(f.vt, 40, 8);
+    row(&f, 0, big, sizeof(big));
+    CHECK_STR(big, "prompt$ echo 中文和 ASCII 混排");
+    row(&f, 1, big, sizeof(big));
+    CHECK_STR(big, "root@iphone:~#");
+    fix_free(&f);
+
+    /* 列数变窄再变回来，内容必须一字不差：既不能丢字，也不能凭空多出空格 */
+    fix_init(&f, 60, 8, 100);
+    feed(&f, "prompt$ echo 中文和 ASCII 混排 mixed content 12345 结束\r\n");
+    feed(&f, "root@iphone:~#");
+    vt_resize(f.vt, 30, 8);
+    vt_resize(f.vt, 60, 8);
+    row(&f, 0, big, sizeof(big));
+    CHECK_STR(big, "prompt$ echo 中文和 ASCII 混排 mixed content 12345 结束");
+    row(&f, 1, big, sizeof(big));
+    CHECK_STR(big, "root@iphone:~#");
+    fix_free(&f);
+
+    /* 宽字符在行尾放不下时让出的填充格，重新折行时不能变成真空格 */
+    fix_init(&f, 9, 4, 100);
+    feed(&f, "abcdefgh");      /* 占满前 8 列 */
+    feed(&f, "中");            /* 第 9 列放不下宽字符，整体挤到下一行 */
+    feed(&f, "\r\nnext");
+    vt_resize(f.vt, 12, 4);
+    row(&f, 0, big, sizeof(big));
+    CHECK_STR(big, "abcdefgh中");
+    row(&f, 1, big, sizeof(big));
+    CHECK_STR(big, "next");
+    fix_free(&f);
+}
+
+/* ---------------------------------------------------------------- */
+/* 重排引擎的随机往返测试：任意宽度来回缩放，屏幕内容必须一字不差 */
+static unsigned g_rnd = 20260918u;
+
+static int rnd_below(int n)
+{
+    g_rnd = g_rnd * 1103515245u + 12345u;
+    return (int)((g_rnd >> 16) % (unsigned)n);
+}
+
+static char *screen_text(Vt *vt)
+{
+    size_t cap = 1024, len = 0;
+    char *out = (char *)malloc(cap);
+    out[0] = 0;
+    int total = vt_total_lines(vt);
+    for (int r = 0; r < total; r++) {
+        VtLine *l = vt_line_at(vt, r);
+        char *t = vt_row_text(vt, r, true);
+        size_t n = strlen(t);
+        while (len + n + 2 > cap) { cap *= 2; out = (char *)realloc(out, cap); }
+        if (r > 0 && !(l->flags & VT_LINE_WRAPPED)) out[len++] = '\n';
+        memcpy(out + len, t, n);
+        len += n;
+        out[len] = 0;
+        free(t);
+    }
+    return out;
+}
+
+static void test_reflow_fuzz(void)
+{
+    printf("resize reflow round-trip\n");
+    static const char *const words[] = {
+        "echo", "ls -la", "中文测试", "混排 mixed 123", "结束。",
+        "printf", "abc", "中", "aa中bb", "，", "0123456789", "~/Desktop",
+    };
+    const int nwords = (int)(sizeof(words) / sizeof(words[0]));
+    int bad = 0;
+    for (int iter = 0; iter < 60; iter++) {
+        int cols = 12 + rnd_below(30);
+        Fix f;
+        fix_init(&f, cols, 8, 4000);
+        char line[512];
+        int nlines = 1 + rnd_below(10);
+        for (int i = 0; i < nlines; i++) {
+            line[0] = 0;
+            int nw = 1 + rnd_below(4);
+            for (int k = 0; k < nw; k++) {
+                if (k) strcat(line, " ");
+                strcat(line, words[rnd_below(nwords)]);
+            }
+            strcat(line, "\r\n");
+            feed(&f, line);
+        }
+        char *want = screen_text(f.vt);
+        vt_resize(f.vt, 8 + rnd_below(50), 4 + rnd_below(12));
+        vt_resize(f.vt, cols, 8);
+        char *got = screen_text(f.vt);
+        if (strcmp(want, got) != 0) {
+            bad++;
+            if (bad == 1) {
+                printf("  FAIL %d: %d 列往返还原不一致\n", __LINE__, cols);
+                printf("    want: %s\n", want);
+                printf("    got : %s\n", got);
+            }
+        }
+        free(want);
+        free(got);
+        fix_free(&f);
+    }
+    g_checks++;
+    if (bad) g_fail++;
 }
 
 static void test_text_extract(void)
@@ -677,6 +794,7 @@ int main(void)
     test_charset();
     test_combining();
     test_reflow();
+    test_reflow_fuzz();
     test_text_extract();
     test_keys();
     test_rep_and_dsr_origin();

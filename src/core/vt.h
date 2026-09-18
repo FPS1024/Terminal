@@ -40,6 +40,7 @@ enum {
     VT_STRIKE      = 1 << 7,
     VT_DBLUNDER    = 1 << 8,
     VT_WIDE_CONT   = 1 << 9,   /* 宽字符的第二格，渲染时跳过 */
+    VT_WIDE_PAD    = 1 << 10,  /* 宽字符折行时让出的填充格，重新折行时丢弃 */
 };
 
 typedef struct {

@@ -529,6 +529,10 @@ static void vt_put_char(Vt *vt, uint32_t cp)
 
     if (w == 2 && b->cx == b->cols - 1) {
         if (vt->autowrap) {
+            /* 宽字符放不下，本行末尾空出来的格子只是填充，重新折行时要丢掉 */
+            VtCell *pad = &b->lines[b->cy].cells[b->cx];
+            if (pad->cp == ' ' && pad->cp2 == 0 && pad->cp3 == 0)
+                pad->flags |= VT_WIDE_PAD;
             b->lines[b->cy].flags |= VT_LINE_WRAPPED;
             b->lines[b->cy].rev++;
             vt_linefeed(vt);
@@ -1593,7 +1597,8 @@ static void vt_flat_push(VtFlat *f, VtCell c, int hard)
 static int vt_cell_is_blank(const VtCell *c)
 {
     return c->cp == ' ' && c->cp2 == 0 && c->cp3 == 0 &&
-           c->fg == VT_COLOR_DEFAULT && c->bg == VT_COLOR_DEFAULT && c->flags == 0;
+           c->fg == VT_COLOR_DEFAULT && c->bg == VT_COLOR_DEFAULT &&
+           (c->flags & (uint16_t)~VT_WIDE_PAD) == 0;
 }
 
 void vt_resize(Vt *vt, int cols, int rows)
@@ -1639,8 +1644,18 @@ void vt_resize(Vt *vt, int cols, int rows)
         if (hard) {
             while (last > 0 && vt_cell_is_blank(&l->cells[last - 1])) last--;
         }
-        for (int x = 0; x < last; x++) vt_flat_push(&flat, l->cells[x], hard && x == last - 1);
-        if (hard && last == 0) vt_flat_push(&flat, vt_blank_cell(VT_COLOR_DEFAULT), 1);
+        /* 硬换行的标记要挂在最后一个真实格子上：宽字符的续格是零宽的，
+           挂上去会被下面的重排循环跳过，换行就丢了（两行会被并成一行）。 */
+        int hard_at = -1;
+        for (int x = 0; x < last; x++) {
+            if (l->cells[x].flags & VT_WIDE_PAD) continue;   /* 填充格不算内容 */
+            vt_flat_push(&flat, l->cells[x], 0);
+            if (l->cells[x].width != 0) hard_at = flat.n - 1;
+        }
+        if (hard) {
+            if (hard_at >= 0) flat.hard[hard_at] = 1;
+            else vt_flat_push(&flat, vt_blank_cell(VT_COLOR_DEFAULT), 1);
+        }
         if (r == (vt->sb_len - keep) + nb->cy) {
             int cx = nb->cx + (nb->wrapped ? 1 : 0);
             if (cx > last) cx = last;
@@ -1672,6 +1687,7 @@ void vt_resize(Vt *vt, int cols, int rows)
         if (pos + w > cols) {
             if (n == cap) { cap *= 2; out = (VtLine *)realloc(out, sizeof(VtLine) * (size_t)cap); }
             cur.flags = VT_LINE_WRAPPED;
+            for (int k = pos; k < cols; k++) cur.cells[k].flags |= VT_WIDE_PAD;
             last_emit_pos = pos;
             out[n++] = cur;
             cur = vt_line_new(cols, VT_COLOR_DEFAULT);
@@ -1797,6 +1813,7 @@ static void line_text_into(VtLine *l, int x0, int x1, char **buf, size_t *len, s
     for (int x = x0; x < x1; x++) {
         VtCell *c = &l->cells[x];
         if (c->width == 0) continue;
+        if (c->flags & VT_WIDE_PAD) continue;
         sb_append_cp(buf, len, cap, c->cp);
         sb_append_cp(buf, len, cap, c->cp2);
         sb_append_cp(buf, len, cap, c->cp3);
