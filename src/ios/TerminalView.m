@@ -114,6 +114,10 @@ static NSString *TermUniCharToString(UTF32Char c)
     BOOL        _suppressCaretNav;
     BOOL        _mousePressed;
     NSInteger   _mouseRow, _mouseCol;
+    /* 输入法上屏：有的中文键盘只调 unmarkText、不走 insertText:，
+       这时得把预编辑串补发给 PTY */
+    BOOL        _committingInsert;
+    NSString   *_pendingCommit;
 }
 
 /* ================= 初始化 ================= */
@@ -1370,7 +1374,7 @@ static BOOL TermIsWordCp(uint32_t c)
 
 - (NSString *)textInRange:(UITextRange *)range
 {
-    if (![range isKindOfClass:[TermRange class]] || !self.vt) return nil;
+    if (![range isKindOfClass:[TermRange class]] || !self.vt) return @"";
     NSInteger s = ((TermPosition *)range.start).offset;
     NSInteger e = ((TermPosition *)range.end).offset;
     if (e <= s) return @"";
@@ -1445,7 +1449,11 @@ static BOOL TermIsWordCp(uint32_t c)
 
 - (void)setMarkedText:(NSString *)text selectedRange:(NSRange)sel
 {
-    if (!text.length) { [self unmarkText]; return; }
+    if (!text.length) {          /* 取消组词：丢掉，不给 PTY */
+        [self cancelPendingCommit];
+        [self clearMarkedText];
+        return;
+    }
     [_inputDelegate textWillChange:self];
     _markedText = [text copy];
     _markedSel = sel;
@@ -1455,13 +1463,63 @@ static BOOL TermIsWordCp(uint32_t c)
     [_inputDelegate selectionDidChange:self];
 }
 
-- (void)unmarkText
+/* UIKit 有时走带属性的那个入口 */
+- (void)setAttributedMarkedText:(NSAttributedString *)text selectedRange:(NSRange)sel
+{
+    [self setMarkedText:text.string selectedRange:sel];
+}
+
+- (void)clearMarkedText
 {
     if (!_markedText.length) return;
     [_inputDelegate textWillChange:self];
     _markedText = nil;
     _markedSel = NSMakeRange(0, 0);
     [_inputDelegate textDidChange:self];
+    [self setNeedsDisplay];
+}
+
+- (void)unmarkText
+{
+    if (!_markedText.length) return;
+    NSString *composed = _markedText;
+    [self clearMarkedText];
+    /*
+     * 正常上屏是 insertText:（由我们在里面 unmark），但有的中文输入法只调
+     * unmarkText、不调 insertText:，那串字就凭空不见了。这里先把内容记下来，
+     * 推后一轮 RunLoop 再发；紧接着若来了 insertText:，它会取消这份待发内容，
+     * 所以不会发两遍。
+     */
+    if (_committingInsert || !self.isFirstResponder) return;
+    [self schedulePendingCommit:composed];
+}
+
+- (void)schedulePendingCommit:(NSString *)text
+{
+    [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                             selector:@selector(flushPendingCommit)
+                                               object:nil];
+    _pendingCommit = [text copy];
+    [self performSelector:@selector(flushPendingCommit) withObject:nil afterDelay:0];
+}
+
+- (void)cancelPendingCommit
+{
+    [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                             selector:@selector(flushPendingCommit)
+                                               object:nil];
+    _pendingCommit = nil;
+}
+
+- (void)flushPendingCommit
+{
+    NSString *s = _pendingCommit;
+    _pendingCommit = nil;
+    if (!s.length || !self.vt || !self.isFirstResponder) return;
+    [self sendString:s];
+    [self consumeStickyModifiers];
+    [self scrollToBottom];
+    [self resetBlink];
     [self setNeedsDisplay];
 }
 
@@ -1489,7 +1547,12 @@ static BOOL TermIsWordCp(uint32_t c)
 - (void)insertText:(NSString *)text
 {
     if (!text.length || !self.vt) return;
-    if (_markedText.length) [self unmarkText];
+    [self cancelPendingCommit];      /* 走了标准入口，兜底那条就不发了 */
+    if (_markedText.length) {
+        _committingInsert = YES;
+        [self unmarkText];
+        _committingInsert = NO;
+    }
     [self resetBlink];
     [self scrollToBottom];
     if (text.length == 1) {
@@ -1497,7 +1560,11 @@ static BOOL TermIsWordCp(uint32_t c)
         if (u == '\n' || u == '\r') { [self sendKey:VK_ENTER mods:0 ch:0]; return; }
         if (u == '\t') { [self sendKey:VK_TAB mods:0 ch:0]; return; }
         if (u == 0x7F || u == 0x08) { [self sendKey:VK_BACKSPACE mods:0 ch:0]; return; }
-        [self sendKey:VK_CHAR mods:0 ch:(uint32_t)u];
+        if (u < 0x80) { [self sendKey:VK_CHAR mods:0 ch:(uint32_t)u]; return; }
+        /* 中文、emoji 这些非 ASCII 直接按 UTF-8 原样送，不走按键编码 */
+        [self sendString:text];
+        [self consumeStickyModifiers];
+        [self setNeedsDisplay];
         return;
     }
     /* 中文候选上屏、听写、手写这些都是一把给整串，直接原样送 */
