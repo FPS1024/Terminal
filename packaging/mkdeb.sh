@@ -14,7 +14,7 @@ set -e
 
 APP_NAME=${APP_NAME:-Terminal}
 BUNDLE_ID=${BUNDLE_ID:-com.malacaihongpi.terminal}
-VERSION=${VERSION:-1.0.0}
+VERSION=${VERSION:-1.0.1}
 DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
 MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 

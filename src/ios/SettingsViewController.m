@@ -208,7 +208,8 @@ static NSString *CursorStyleName(NSInteger s)
         c = [self cellWithStyle:UITableViewCellStyleValue1];
         if (ip.row == RowVersion) {
             c.textLabel.text = @"Terminal";
-            c.detailTextLabel.text = @"1.0.0";
+            NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+            c.detailTextLabel.text = ver.length ? ver : @"—";
         } else {
             c.textLabel.text = @"中文输入";
             c.detailTextLabel.text = @"系统拼音键盘";

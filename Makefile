@@ -4,8 +4,8 @@
 #       中间文件全部落在 build/，发布产物全部落在 out/（out/ 里只有最终产物）。
 #
 #   make ios        编译 App                 -> out/Terminal.app
-#   make deb        打包 rootless 越狱 deb    -> out/Terminal_1.0.0_iphoneos-arm64.deb
-#   make ipa        打包 ipa                 -> out/Terminal_1.0.0.ipa
+#   make deb        打包 rootless 越狱 deb    -> out/Terminal_1.0.1_iphoneos-arm64.deb
+#   make ipa        打包 ipa                 -> out/Terminal_1.0.1.ipa
 #   make release    依次生成上面三个产物
 #
 #   make test       主机端核心单元测试（不需要模拟器，也不需要真机）
@@ -18,7 +18,7 @@
 # ---------------- 项目信息 ----------------
 APP_NAME   := Terminal
 BUNDLE_ID  := com.malacaihongpi.terminal
-VERSION    := 1.0.0
+VERSION    := 1.0.1
 MAINTAINER := FPS1024 <ceaser.k.w@outlook.com>
 
 # ---------------- 工具链 ----------------

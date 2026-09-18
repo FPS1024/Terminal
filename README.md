@@ -107,8 +107,8 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 ```sh
 make            # 打印可用目标
 make ios        # 编译 App                  -> out/Terminal.app
-make deb        # 打包 rootless 越狱 deb 包  -> out/Terminal_1.0.0_iphoneos-arm64.deb
-make ipa        # 打包 ipa                  -> out/Terminal_1.0.0.ipa
+make deb        # 打包 rootless 越狱 deb 包  -> out/Terminal_1.0.1_iphoneos-arm64.deb
+make ipa        # 打包 ipa                  -> out/Terminal_1.0.1.ipa
 make release    # 上面三个一起生成，并打印体积与 SHA256
 ```
 
@@ -117,8 +117,8 @@ make release    # 上面三个一起生成，并打印体积与 SHA256
 | 路径 | 内容 |
 | --- | --- |
 | `out/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名） |
-| `out/Terminal_1.0.0_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
-| `out/Terminal_1.0.0.ipa` | ipa 包，内含 `Payload/Terminal.app`，供 TrollStore 等使用 |
+| `out/Terminal_1.0.1_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `out/Terminal_1.0.1.ipa` | ipa 包，内含 `Payload/Terminal.app`，供 TrollStore 等使用 |
 | `build/` | 目标文件、图标、打包临时目录等中间产物 |
 
 `make deb` 只产出 rootless 一种包。同一台构建机上重复打包，deb 与 ipa 都是字节一致的，
@@ -143,8 +143,8 @@ make dump          # 主机端联调工具：启动真实 Shell 并输出最终�
 
 ```sh
 make deb
-# 把 out/Terminal_1.0.0_iphoneos-arm64.deb 传到设备后执行：
-dpkg -i Terminal_1.0.0_iphoneos-arm64.deb
+# 把 out/Terminal_1.0.1_iphoneos-arm64.deb 传到设备后执行：
+dpkg -i Terminal_1.0.1_iphoneos-arm64.deb
 ```
 
 安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` 脚本会自动执行 `uicache`
@@ -154,7 +154,7 @@ dpkg -i Terminal_1.0.0_iphoneos-arm64.deb
 
 ```sh
 make ipa
-# out/Terminal_1.0.0.ipa 用 TrollStore 或 AltStore 安装
+# out/Terminal_1.0.1.ipa 用 TrollStore 或 AltStore 安装
 ```
 
 **方式三：直接推送**

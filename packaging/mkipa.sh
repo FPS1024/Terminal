@@ -11,7 +11,7 @@
 set -e
 
 APP_NAME=${APP_NAME:-Terminal}
-VERSION=${VERSION:-1.0.0}
+VERSION=${VERSION:-1.0.1}
 
 APP_DIR=${APP_DIR:-out/$APP_NAME.app}
 OUT_IPA=${OUT_IPA:-out/${APP_NAME}_${VERSION}.ipa}
