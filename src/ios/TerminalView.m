@@ -1374,6 +1374,13 @@ static BOOL TermIsWordCp(uint32_t c)
     NSInteger s = ((TermPosition *)range.start).offset;
     NSInteger e = ((TermPosition *)range.end).offset;
     if (e <= s) return @"";
+    if (_markedText.length) {
+        /* 预编辑串是画在光标处的覆盖层：这一段要还回输入法自己的字。
+           以前这里读的是终端缓冲，输入法读回旧内容后就把组词丢了 */
+        NSInteger caret = [self caretOffset];
+        NSInteger mcells = (NSInteger)[self cellWidthOfString:_markedText];
+        if (s >= caret && e <= caret + mcells) return _markedText;
+    }
     int r0, c0, r1, c1;
     [self offsetToRow:&r0 col:&c0 offset:s];
     [self offsetToRow:&r1 col:&c1 offset:e - 1];
@@ -1386,6 +1393,7 @@ static BOOL TermIsWordCp(uint32_t c)
 - (void)setSelectedTextRange:(UITextRange *)range
 {
     if (![range isKindOfClass:[TermRange class]]) return;
+    if (_markedText.length) return;
     NSInteger s = ((TermPosition *)range.start).offset;
     NSInteger e = ((TermPosition *)range.end).offset;
     if (e > s) {
@@ -1410,6 +1418,10 @@ static BOOL TermIsWordCp(uint32_t c)
 
 - (UITextRange *)selectedTextRange
 {
+    if (_markedText.length) {
+        NSInteger end = [self caretOffset] + (NSInteger)[self cellWidthOfString:_markedText];
+        return [self rangeFrom:end to:end];
+    }
     if (_hasSelection) {
         NSInteger r0, c0, r1, c1;
         [self orderedSelRow0:&r0 col0:&c0 row1:&r1 col1:&c1];
@@ -1433,19 +1445,23 @@ static BOOL TermIsWordCp(uint32_t c)
 
 - (void)setMarkedText:(NSString *)text selectedRange:(NSRange)sel
 {
+    if (!text.length) { [self unmarkText]; return; }
+    [_inputDelegate textWillChange:self];
     _markedText = [text copy];
     _markedSel = sel;
+    [_inputDelegate textDidChange:self];
     [self setNeedsDisplay];
     [_inputDelegate selectionWillChange:self];
     [_inputDelegate selectionDidChange:self];
-    if (!_markedText.length) [self unmarkText];
 }
 
 - (void)unmarkText
 {
     if (!_markedText.length) return;
+    [_inputDelegate textWillChange:self];
     _markedText = nil;
     _markedSel = NSMakeRange(0, 0);
+    [_inputDelegate textDidChange:self];
     [self setNeedsDisplay];
 }
 
@@ -1473,10 +1489,7 @@ static BOOL TermIsWordCp(uint32_t c)
 - (void)insertText:(NSString *)text
 {
     if (!text.length || !self.vt) return;
-    if (_markedText.length) {
-        _markedText = nil;
-        _markedSel = NSMakeRange(0, 0);
-    }
+    if (_markedText.length) [self unmarkText];
     [self resetBlink];
     [self scrollToBottom];
     if (text.length == 1) {
@@ -1496,9 +1509,9 @@ static BOOL TermIsWordCp(uint32_t c)
 - (void)deleteBackward
 {
     if (_markedText.length) {
-        _markedText = nil;
-        _markedSel = NSMakeRange(0, 0);
-        [self setNeedsDisplay];
+        NSRange last = [_markedText rangeOfComposedCharacterSequenceAtIndex:_markedText.length - 1];
+        NSString *rest = [_markedText substringToIndex:last.location];
+        [self setMarkedText:rest selectedRange:NSMakeRange(rest.length, 0)];
         return;
     }
     if (_hasSelection) {
