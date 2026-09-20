@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# 把 out/Terminal.app 打成 rootless 越狱用的 .deb。
+# 把 build/Terminal.app 打成 rootless 越狱用的 .deb。
 #
 #   - 只产出 rootless 一种包：安装到 /var/jb/Applications/Terminal.app
 #   - 架构标记为 iphoneos-arm64（Dopamine / Palera1n 等 rootless 越狱）
@@ -14,11 +14,11 @@ set -e
 
 APP_NAME=${APP_NAME:-Terminal}
 BUNDLE_ID=${BUNDLE_ID:-com.malacaihongpi.terminal}
-VERSION=${VERSION:-1.0.2}
+VERSION=${VERSION:-1.0.3}
 DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
 MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 
-APP_DIR=${APP_DIR:-out/$APP_NAME.app}
+APP_DIR=${APP_DIR:-build/$APP_NAME.app}
 OUT_DEB=${OUT_DEB:-out/${APP_NAME}_${VERSION}_${DEB_ARCH}.deb}
 WORK=${WORK:-build/deb}
 

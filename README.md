@@ -106,23 +106,21 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 
 ```sh
 make            # 打印可用目标
-make ios        # 编译 App                  -> out/Terminal.app
-make deb        # 打包 rootless 越狱 deb 包  -> out/Terminal_1.0.2_iphoneos-arm64.deb
-make ipa        # 打包 ipa                  -> out/Terminal_1.0.2.ipa
-make release    # 上面三个一起生成，并打印体积与 SHA256
+make ios        # 编译 App（中间产物）     -> build/Terminal.app
+make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.3_iphoneos-arm64.deb
 ```
 
-发布产物统一放在 `out/`，中间文件统一放在 `build/`，两者都不纳入版本控制：
+中间文件统一放在 `build/`，**发布产物只有一个 deb，放在 `out/`**：
 
 | 路径 | 内容 |
 | --- | --- |
-| `out/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名） |
-| `out/Terminal_1.0.2_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
-| `out/Terminal_1.0.2.ipa` | ipa 包，内含 `Payload/Terminal.app`，供 TrollStore 等使用 |
-| `build/` | 目标文件、图标、打包临时目录等中间产物 |
+| `build/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名），中间产物 |
+| `out/Terminal_1.0.3_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `build/obj/`、`build/icons/`、`build/deb/` | 目标文件、图标、打包临时目录 |
 
-`make deb` 只产出 rootless 一种包。同一台构建机上重复打包，deb 与 ipa 都是字节一致的，
-便于核对 Release 校验值；版本号可在命令行覆盖，例如 `make release VERSION=1.0.2`。
+两个目录都不纳入版本控制。`make deb` 只产出 rootless 一种包，同一台构建机上重复打包
+结果字节一致，便于核对 Release 校验值，收尾会打印 deb 的 SHA256。
+版本号可在命令行覆盖，例如 `make deb VERSION=1.0.3`。
 
 主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
 
@@ -143,21 +141,14 @@ make dump          # 主机端联调工具：启动真实 Shell 并输出最终�
 
 ```sh
 make deb
-# 把 out/Terminal_1.0.2_iphoneos-arm64.deb 传到设备后执行：
-dpkg -i Terminal_1.0.2_iphoneos-arm64.deb
+# 把 out/Terminal_1.0.3_iphoneos-arm64.deb 传到设备后执行：
+dpkg -i Terminal_1.0.3_iphoneos-arm64.deb
 ```
 
 安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` 脚本会自动执行 `uicache`
 并刷新 SpringBoard。
 
-**方式二：ipa**
-
-```sh
-make ipa
-# out/Terminal_1.0.2.ipa 用 TrollStore 或 AltStore 安装
-```
-
-**方式三：直接推送**
+**方式二：直接推送**
 
 ```sh
 make install DEVICE=root@192.168.1.23
@@ -182,6 +173,23 @@ make install DEVICE=root@192.168.1.23
 
 若中文显示为方块或列宽异常，通常是字体名称不正确，可在设置中切换为 `PingFang SC`
 或 `Hiragino Sans GB`。
+
+#### 中文环境的 locale
+
+终端启动时会先在本机 libc 上实测，再挑一个真正可用的 UTF-8 locale，写进
+`LANG`、`LC_CTYPE` 与 `LC_ALL`（顺序：`zh_CN.UTF-8` → `en_US.UTF-8` → `UTF-8`），
+所以 zsh 与 bash 都能正确处理中文，不需要任何手工设置。
+
+> **不要手动执行 `export LANG=C.UTF-8`。** `C.UTF-8` 是 Linux 的东西，macOS 与 iOS
+> 的 libc 里并没有这个 locale。一旦把它设进环境，zsh 的 ZLE 会掉回单字节模式：键入
+> 的中文被回显成 `<00ad>` 这类记法，看上去就是乱码。此时命令本身仍会正确执行，
+> `cat` 的回显也正常（那是内核行规程的回显，不经过 ZLE），所以很容易误判成
+> 「输入没送进终端」。
+
+项目已把 `LC_ALL` 一并设好，它的优先级高于 `LANG` 与 `LC_CTYPE`，足以压住 rc 文件里
+残留的 `LANG=C.UTF-8` / `LC_CTYPE=C.UTF-8`。但如果是 `~/.zshrc` 里写着更强势的
+`export LC_ALL=C.UTF-8`，请删掉那一行。同理，若 rc 里写死了 `LANG=C`，也不会再影响
+中文输入与回显。
 
 ### 5.2 手势与快捷键
 
@@ -226,7 +234,7 @@ confirm_paste   = 1
 ## 六、项目结构
 
 ```
-Makefile                             构建入口（ios / deb / ipa / release / test / dump）
+Makefile                             构建入口（ios / deb / test / dump / install / icons）
 
 src/core/vt.h  vt.c                  终端仿真核心（纯 C，可单元测试）
 src/core/vt_unicode.h  .c            UTF-8 编解码与东亚字符宽度表
@@ -240,20 +248,19 @@ src/ios/SettingsViewController.h .m  设置界面
 src/ios/Info.plist                   App 清单
 src/ios/LaunchScreen.storyboard      启动画面
 
-tests/test_vt.c                      核心单元测试（164 项断言）
+tests/test_vt.c                      核心单元测试（173 项断言）
 tools/termdump.c                     构建机上的联调工具
 tools/mkicon.c                       App 图标生成
 packaging/mkdeb.sh                   rootless deb 打包（不依赖 dpkg）
-packaging/mkipa.sh                   ipa 打包
 
 assets/AppIconSource.png             图标源图（来自 macOS 自带 Terminal.app）
 build/                               中间产物，不纳入版本控制
-out/                                 发布产物，不纳入版本控制
+out/                                 发布产物（只有 deb），不纳入版本控制
 ```
 
 ## 七、测试
 
-终端仿真核心附带 164 项断言，覆盖 UTF-8 解码、东亚字符宽度、折行与 reflow、滚动区、
+终端仿真核心附带 173 项断言，覆盖 UTF-8 解码、东亚字符宽度、折行与 reflow、滚动区、
 备用屏幕、SGR、键序列编码、括号粘贴与跨块 UTF-8 序列等场景，测试语料以中文为主。
 
 ```sh

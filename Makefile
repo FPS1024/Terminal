@@ -1,24 +1,23 @@
 # Terminal — 越狱 iOS 终端
 #
-# 约定：源码在 src/ tests/ tools/ packaging/ assets/，
-#       中间文件全部落在 build/，发布产物全部落在 out/（out/ 里只有最终产物）。
+# 目录约定：源码在 src/ tests/ tools/ packaging/ assets/，
+#           中间产物全部落在 build/，发布产物只有一个 deb，落在 out/。
 #
-#   make ios        编译 App                 -> out/Terminal.app
-#   make deb        打包 rootless 越狱 deb    -> out/Terminal_1.0.2_iphoneos-arm64.deb
-#   make ipa        打包 ipa                 -> out/Terminal_1.0.2.ipa
-#   make release    依次生成上面三个产物
+#   make ios     编译 App（中间产物，落 build/Terminal.app）
+#   make deb     打包 rootless 越狱 deb -> out/Terminal_1.0.3_iphoneos-arm64.deb
 #
-#   make test       主机端核心单元测试（不需要模拟器，也不需要真机）
-#   make dump       主机端联调工具：起真实 Shell，打印最终屏幕
-#   make install    推送到真机安装（需要 DEVICE=root@ip）
-#   make clean      清掉 build/ 与 out/
+#   make test    主机端核心单元测试（不需要模拟器，也不需要真机）
+#   make dump    主机端联调工具：起真实 Shell，打印最终屏幕
+#   make install 推送到真机安装（需要 DEVICE=root@ip）
+#   make icons   重新生成 App 图标（make appicon 从 macOS 的 Terminal.app 取源图）
+#   make clean   清掉 build/ 与 out/
 #
 # 变量：VERSION / MIN_IOS / ARCHS / DEVICE 均可在命令行覆盖。
 
 # ---------------- 项目信息 ----------------
 APP_NAME   := Terminal
 BUNDLE_ID  := com.malacaihongpi.terminal
-VERSION    := 1.0.2
+VERSION    := 1.0.3
 MAINTAINER := FPS1024 <ceaser.k.w@outlook.com>
 
 # ---------------- 工具链 ----------------
@@ -33,6 +32,8 @@ IOS_SDK := $(shell xcrun --sdk $(SDK) --show-sdk-path 2>/dev/null)
 # rootless 越狱（Dopamine / Palera1n 等）：安装前缀固定为 /var/jb
 DEB_ARCH := iphoneos-arm64
 
+VER_DEF := -DTERM_PROGRAM_VERSION_STR=\"$(VERSION)\"   # shell 里 $TERM_PROGRAM_VERSION
+
 # ---------------- 目录约定 ----------------
 SRC_DIR    := src
 TEST_DIR   := tests
@@ -44,12 +45,10 @@ BUILD_DIR  := build
 OBJ_DIR    := $(BUILD_DIR)/obj
 ICON_DIR   := $(BUILD_DIR)/icons
 DEB_WORK   := $(BUILD_DIR)/deb
-IPA_WORK   := $(BUILD_DIR)/ipa
 
 OUT_DIR    := out
-APP_DIR    := $(OUT_DIR)/$(APP_NAME).app
+APP_BUNDLE := $(BUILD_DIR)/$(APP_NAME).app
 DEB_PKG    := $(OUT_DIR)/$(APP_NAME)_$(VERSION)_$(DEB_ARCH).deb
-IPA_PKG    := $(OUT_DIR)/$(APP_NAME)_$(VERSION).ipa
 
 # ---------------- 源文件 ----------------
 CORE_SRC := $(SRC_DIR)/core/vt.c $(SRC_DIR)/core/vt_unicode.c
@@ -58,7 +57,7 @@ IOS_SRC  := $(wildcard $(SRC_DIR)/ios/*.m) $(CORE_SRC) $(HOST_SRC)
 IOS_OBJ  := $(patsubst %.m,$(OBJ_DIR)/%.o,$(patsubst %.c,$(OBJ_DIR)/%.o,$(IOS_SRC)))
 
 IOS_INCS    := -I$(SRC_DIR)/core -I$(SRC_DIR)/host -I$(SRC_DIR)/ios
-IOS_CFLAGS  := -std=c99 -O2 -Wall -Wno-unused-parameter $(IOS_INCS) \
+IOS_CFLAGS  := -std=c99 -O2 -Wall -Wno-unused-parameter $(IOS_INCS) $(VER_DEF) \
                -arch $(ARCHS) -miphoneos-version-min=$(MIN_IOS) -isysroot $(IOS_SDK)
 IOS_LDFLAGS := -arch $(ARCHS) -miphoneos-version-min=$(MIN_IOS) -isysroot $(IOS_SDK) \
                -framework Foundation -framework UIKit -framework CoreGraphics \
@@ -73,7 +72,7 @@ ICON_SPECS  := Icon.png:60 Icon@2x.png:120 Icon@3x.png:180 \
 ICON_FILES  := $(addprefix $(ICON_DIR)/,Icon.png Icon@2x.png Icon@3x.png \
                Icon-76.png Icon-76@2x.png Icon-83.5@2x.png)
 
-.PHONY: help all ios deb ipa release test dump install icons appicon storyboard clean check-sdk
+.PHONY: help all ios deb test dump install icons appicon storyboard clean check-sdk
 
 .DEFAULT_GOAL := help
 
@@ -81,50 +80,33 @@ help:
 	@echo
 	@echo "  Terminal — 越狱 iOS 终端"
 	@echo
-	@echo "  发布产物（统一输出到 $(OUT_DIR)/）"
-	@printf '    %-14s %s\n' "make ios"     "编译 App        -> $(APP_DIR)"
-	@printf '    %-14s %s\n' "make deb"     "rootless deb 包 -> $(DEB_PKG)"
-	@printf '    %-14s %s\n' "make ipa"     "ipa 包          -> $(IPA_PKG)"
-	@printf '    %-14s %s\n' "make release" "上面三个一起生成"
+	@echo "  构建（发布产物只有 deb，统一放在 $(OUT_DIR)/）"
+	@printf '    %-14s %s\n' "make ios" "编译 App（中间产物） -> $(APP_BUNDLE)"
+	@printf '    %-14s %s\n' "make deb" "rootless deb 包       -> $(DEB_PKG)"
 	@echo
 	@echo "  主机端（不需要模拟器与真机）"
-	@printf '    %-14s %s\n' "make test"    "终端核心单元测试"
-	@printf '    %-14s %s\n' "make dump"    "起真实 Shell，打印最终屏幕"
+	@printf '    %-14s %s\n' "make test" "终端核心单元测试"
+	@printf '    %-14s %s\n' "make dump" "起真实 Shell，打印最终屏幕"
 	@echo
 	@echo "  其他"
 	@printf '    %-14s %s\n' "make install" "推送到真机安装（DEVICE=root@ip）"
-	@printf '    %-14s %s\n' "make icons"   "重新生成 App 图标"
-	@printf '    %-14s %s\n' "make clean"   "清掉 $(BUILD_DIR)/ 与 $(OUT_DIR)/"
+	@printf '    %-14s %s\n' "make icons" "重新生成 App 图标"
+	@printf '    %-14s %s\n' "make clean" "清掉 $(BUILD_DIR)/ 与 $(OUT_DIR)/"
 	@echo
 
-all: release
+all: deb
 
 # ---------------- 发布产物 ----------------
 
-ios: check-sdk icons $(APP_DIR)/$(APP_NAME)
+ios: check-sdk icons $(APP_BUNDLE)
 
 deb: ios
 	@APP_NAME='$(APP_NAME)' BUNDLE_ID='$(BUNDLE_ID)' VERSION='$(VERSION)' \
 	 DEB_ARCH='$(DEB_ARCH)' MAINTAINER='$(MAINTAINER)' \
-	 APP_DIR='$(APP_DIR)' OUT_DEB='$(DEB_PKG)' WORK='$(DEB_WORK)' \
+	 APP_DIR='$(APP_BUNDLE)' OUT_DEB='$(DEB_PKG)' WORK='$(DEB_WORK)' \
 	 sh $(PKG_DIR)/mkdeb.sh
-
-ipa: ios
-	@APP_NAME='$(APP_NAME)' VERSION='$(VERSION)' \
-	 APP_DIR='$(APP_DIR)' OUT_IPA='$(IPA_PKG)' WORK='$(IPA_WORK)' \
-	 sh $(PKG_DIR)/mkipa.sh
-
-release: ios deb ipa
-	@echo
 	@echo "  发布产物（$(OUT_DIR)/）"
-	@for f in '$(APP_DIR)' '$(DEB_PKG)' '$(IPA_PKG)'; do \
-		printf '    %-46s %8s\n' "$$f" "$$(du -sh "$$f" | cut -f1)"; \
-	done
-	@echo
-	@echo "  SHA256（用于 Release 校验）"
-	@for f in '$(DEB_PKG)' '$(IPA_PKG)'; do \
-		printf '    %-46s %s\n' "$$(basename "$$f")" "$$(LC_ALL=C shasum -a 256 "$$f" | cut -d' ' -f1)"; \
-	done
+	@printf '    %-46s %s\n' "$(notdir $(DEB_PKG))" "$$(LC_ALL=C shasum -a 256 '$(DEB_PKG)' | cut -d' ' -f1)"
 	@echo
 
 check-sdk:
@@ -134,21 +116,21 @@ check-sdk:
 		exit 1; \
 	}
 
-$(APP_DIR)/$(APP_NAME): $(IOS_OBJ) $(SRC_DIR)/ios/Info.plist $(ICON_FILES)
+$(APP_BUNDLE): $(IOS_OBJ) $(SRC_DIR)/ios/Info.plist $(ICON_FILES)
 	@mkdir -p $(dir $@)
-	@rm -rf $(APP_DIR)
-	@mkdir -p $(APP_DIR)
-	@$(CC) $(IOS_LDFLAGS) -o $@ $(IOS_OBJ)
-	@cp $(SRC_DIR)/ios/Info.plist $(APP_DIR)/Info.plist
-	@cp $(ICON_FILES) $(APP_DIR)/
-	@if [ -d $(LAUNCHSCREEN) ]; then cp -R $(LAUNCHSCREEN) $(APP_DIR)/; fi
-	@find $(APP_DIR) -name '.DS_Store' -delete 2>/dev/null || true
+	@rm -rf $(APP_BUNDLE)
+	@mkdir -p $(APP_BUNDLE)
+	@$(CC) $(IOS_LDFLAGS) -o $(APP_BUNDLE)/$(APP_NAME) $(IOS_OBJ)
+	@cp $(SRC_DIR)/ios/Info.plist $(APP_BUNDLE)/Info.plist
+	@cp $(ICON_FILES) $(APP_BUNDLE)/
+	@if [ -d $(LAUNCHSCREEN) ]; then cp -R $(LAUNCHSCREEN) $(APP_BUNDLE)/; fi
+	@find $(APP_BUNDLE) -name '.DS_Store' -delete 2>/dev/null || true
 	@if command -v ldid >/dev/null 2>&1; then \
-		ldid -S $@ && echo "  SIGN  $@"; \
+		ldid -S $(APP_BUNDLE)/$(APP_NAME) && echo "  SIGN  $(APP_BUNDLE)/$(APP_NAME)"; \
 	else \
 		echo "  WARN  未找到 ldid，产物未伪签名"; \
 	fi
-	@echo "  APP   $(APP_DIR)"
+	@echo "  APP   $(APP_BUNDLE)"
 
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
@@ -210,13 +192,13 @@ dump: $(BUILD_DIR)/termdump
 
 $(BUILD_DIR)/termdump: $(TOOLS_DIR)/termdump.c $(CORE_SRC) $(HOST_SRC)
 	@mkdir -p $(BUILD_DIR)
-	@$(CC) -std=c99 -g -O1 -Wall -Wno-unused-parameter \
+	@$(CC) -std=c99 -g -O1 -Wall -Wno-unused-parameter $(VER_DEF) \
 		-I$(SRC_DIR)/core -I$(SRC_DIR)/host -o $@ $^
 
 # ---------------- 真机 ----------------
 
 install: ios
-	@tar -czf $(BUILD_DIR)/$(APP_NAME).tar.gz -C $(OUT_DIR) $(APP_NAME).app
+	@tar -czf $(BUILD_DIR)/$(APP_NAME).tar.gz -C $(BUILD_DIR) $(APP_NAME).app
 	@scp $(BUILD_DIR)/$(APP_NAME).tar.gz $(DEVICE):/tmp/
 	@ssh $(DEVICE) 'set -e; P=/Applications; [ -d /var/jb ] && P=/var/jb/Applications; \
 		rm -rf $$P/$(APP_NAME).app; tar -xzf /tmp/$(APP_NAME).tar.gz -C $$P; \
