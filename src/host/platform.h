@@ -16,7 +16,10 @@ const char *default_shell(void);
 /* 组装 envp（以 NULL 结尾的字符串数组，调用方用 free_env 释放） */
 char **build_env(const char *shell, const char *term, const char *lang, int cols, int rows);
 void free_env(char **env);
+/* 挑一个本机可用的 UTF-8 locale（libc 实际可用性判断，不是看目录） */
 const char *pick_lang(void);
+/* 该名字是否六个分类都有数据（能不能安全写进 LC_ALL） */
+int lang_is_full(const char *name);
 const char *build_path(void);
 #ifdef __cplusplus
 }

@@ -5,6 +5,14 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <sys/stat.h>
+#include <locale.h>
+#include <xlocale.h>
+#include <wchar.h>
+
+/* 由 Makefile 用 -D 传进来，跟着 VERSION 走；单编这个文件时退回 1.0 */
+#ifndef TERM_PROGRAM_VERSION_STR
+#define TERM_PROGRAM_VERSION_STR "1.0"
+#endif
 
 static char g_jb[64];
 static int  g_jb_ready = 0;
@@ -79,22 +87,51 @@ const char *build_path(void)
     return buf;
 }
 
+/* 某个 locale 名字在本机 libc 里是不是真的可用。
+   Darwin 上「/usr/share/locale/<name> 目录存在」并不等于可用：C.UTF-8、
+   zh_CN.utf8 这类名字在 macOS 与 iOS 上都没有数据，而 libc 反倒认得只有
+   LC_CTYPE 一个分类的 "UTF-8"。所以这里直接问 libc：LC_CTYPE 建得出来、
+   并且全角字宽度是 2（"中"），才算数。 */
+static int locale_ctype_ok(const char *name)
+{
+    if (!name || !name[0]) return 0;
+    locale_t l = newlocale(LC_CTYPE_MASK, name, NULL);
+    if (!l) return 0;
+    int ok = (wcwidth_l(0x4E2D, l) == 2);
+    freelocale(l);
+    return ok;
+}
+
+/* newlocale(LC_ALL_MASK) 要求六个分类都有数据（"UTF-8" 只有 LC_CTYPE，
+   就不满足）。只有满足的名字才能写进 LANG / LC_ALL：否则 shell 里的
+   setlocale(LC_ALL, "") 会整体失败，反而退化成单字节模式。 */
+static int locale_full_ok(const char *name)
+{
+    if (!name || !name[0]) return 0;
+    locale_t l = newlocale(LC_ALL_MASK, name, NULL);
+    if (!l) return 0;
+    freelocale(l);
+    return 1;
+}
+
+int lang_is_full(const char *name)
+{
+    return locale_full_ok(name);
+}
+
 const char *pick_lang(void)
 {
-    static const char *cands[] = { "zh_CN.UTF-8", "zh_CN.utf8", "en_US.UTF-8",
-                                   "en_US.utf8", "C.UTF-8", "UTF-8" };
-    struct stat st;
+    static const char *cands[] = { "zh_CN.UTF-8", "en_US.UTF-8", "UTF-8" };
+    static char picked[64];
+    if (picked[0]) return picked;
     for (size_t i = 0; i < sizeof(cands) / sizeof(cands[0]); i++) {
-        char p[256];
-        snprintf(p, sizeof(p), "/usr/share/locale/%s", cands[i]);
-        if (stat(p, &st) == 0) return cands[i];
-        jb_path(p, sizeof(p), "/usr/share/locale");
-        char p2[320];
-        snprintf(p2, sizeof(p2), "%s/%s", p, cands[i]);
-        if (stat(p2, &st) == 0) return cands[i];
+        if (locale_ctype_ok(cands[i])) {
+            snprintf(picked, sizeof(picked), "%s", cands[i]);
+            return picked;
+        }
     }
-    /* iOS 上 locale 目录通常没有，但 libc 认 UTF-8，直接用 */
-    return "en_US.UTF-8";
+    snprintf(picked, sizeof(picked), "%s", "en_US.UTF-8");
+    return picked;
 }
 
 static void env_push(char **arr, int *n, int max, const char *k, const char *v)
@@ -122,9 +159,25 @@ char **build_env(const char *shell, const char *term, const char *lang, int cols
     env_push(env, &n, 48, "SHELL", shell);
     env_push(env, &n, 48, "TERM", term ? term : "xterm-256color");
     env_push(env, &n, 48, "COLORTERM", "truecolor");
-    env_push(env, &n, 48, "LANG", lang ? lang : "en_US.UTF-8");
+    /* locale：shell 的字符集是不是 UTF-8，直接决定中文能不能正常输入与回显。
+       zsh 的 ZLE 在单字节模式下会把中文回显成 <00ad> 这类记法（屏幕上就是乱码），
+       bash 的 readline 则把字节原样吐出来，所以同样的坏 locale 只在 zsh 上明显。
+       这里把 LANG / LC_CTYPE / LC_ALL 一起设成一个本机真正可用的 UTF-8 locale；
+       LC_ALL 优先级最高，用户 rc 里残留的 LANG=C.UTF-8 之类坏值（C.UTF-8 在
+       Darwin 上并不存在）也压不住它。 */
+    const char *lc = (lang && lang[0]) ? lang : "en_US.UTF-8";
+    if (lang_is_full(lc)) {
+        env_push(env, &n, 48, "LANG", lc);
+        env_push(env, &n, 48, "LC_CTYPE", lc);
+        env_push(env, &n, 48, "LC_ALL", lc);
+    } else if (locale_ctype_ok(lc)) {
+        /* 只有 LC_CTYPE 可用时不能写 LC_ALL，否则 setlocale 会整体失败 */
+        env_push(env, &n, 48, "LC_CTYPE", lc);
+    } else {
+        env_push(env, &n, 48, "LANG", lc);
+    }
     env_push(env, &n, 48, "TERM_PROGRAM", "Terminal");
-    env_push(env, &n, 48, "TERM_PROGRAM_VERSION", "1.0");
+    env_push(env, &n, 48, "TERM_PROGRAM_VERSION", TERM_PROGRAM_VERSION_STR);
     snprintf(tmp, sizeof(tmp), "COLUMNS=%d", cols);
     env_push(env, &n, 48, "COLUMNS", tmp + 8);
     snprintf(tmp, sizeof(tmp), "LINES=%d", rows);
