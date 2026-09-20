@@ -175,6 +175,15 @@ static NSString *TermUniCharToString(UTF32Char c)
     self.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.autocorrectionType = UITextAutocorrectionTypeNo;
     self.spellCheckingType = UITextSpellCheckingTypeNo;
+    /*
+     * iOS 的"智能标点"会在按键送进输入视图之前把内容改写掉：连按两个 "-" 会变成
+     * 一个 em dash "—"，直引号会变成弯引号。这三个开关默认是 Default（跟着
+     * keyboardType 走，通常是开着的），自定义输入视图不声明就等于开着，
+     * 关掉 autocorrection 也管不到它们。终端必须原样透传按键。
+     */
+    self.smartDashesType = UITextSmartDashesTypeNo;
+    self.smartQuotesType = UITextSmartQuotesTypeNo;
+    self.smartInsertDeleteType = UITextSmartInsertDeleteTypeNo;
     self.enablesReturnKeyAutomatically = NO;
     self.returnKeyType = UIReturnKeyDefault;
     self.secureTextEntry = NO;
@@ -1268,6 +1277,9 @@ static BOOL TermIsWordCp(uint32_t c)
 @synthesize autocapitalizationType = _autocapitalizationType;
 @synthesize autocorrectionType = _autocorrectionType;
 @synthesize spellCheckingType = _spellCheckingType;
+@synthesize smartDashesType = _smartDashesType;
+@synthesize smartQuotesType = _smartQuotesType;
+@synthesize smartInsertDeleteType = _smartInsertDeleteType;
 @synthesize enablesReturnKeyAutomatically = _enablesReturnKeyAutomatically;
 @synthesize keyboardAppearance = _keyboardAppearance;
 @synthesize returnKeyType = _returnKeyType;
@@ -1527,19 +1539,22 @@ static BOOL TermIsWordCp(uint32_t c)
 {
     NSInteger s = ((TermPosition *)range.start).offset;
     NSInteger e = ((TermPosition *)range.end).offset;
-    if (!text.length && e > s) {
+    if (e > s) {
         int r0, c0, r1, c1;
         [self offsetToRow:&r0 col:&c0 offset:s];
         [self offsetToRow:&r1 col:&c1 offset:e - 1];
         NSInteger curRow = [self baseGlobalRow] + vt_cursor_y(self.vt);
-        if (r0 == r1 && r1 == curRow && c1 + 1 == (NSInteger)vt_cursor_x(self.vt)) {
-            /* 选中的正好是光标前面那一段，退格删掉 */
-            [self clearSelection];
+        BOOL typedText = (r0 == r1 && r1 == curRow &&
+                          c1 + 1 == (NSInteger)vt_cursor_x(self.vt));
+        [self clearSelection];
+        if (typedText) {
+            /* 要改写的正好是光标前面那一段（智能标点、听写纠正、输入法重写）：
+               先在 shell 里退掉，再把新内容打进去，否则终端里会多留一份旧内容 */
             for (NSInteger i = 0; i < c1 - c0 + 1; i++) [self sendKey:VK_BACKSPACE mods:0 ch:0];
+        } else if (!text.length) {
+            /* 范围不是紧贴光标的，判断错了会凭空删掉命令行上的东西，不动 */
             return;
         }
-        [self clearSelection];
-        return;
     }
     if (text.length) [self insertText:text];
 }
