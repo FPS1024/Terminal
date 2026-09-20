@@ -4,7 +4,7 @@
 #           中间产物全部落在 build/，发布产物只有一个 deb，落在 out/。
 #
 #   make ios     编译 App（中间产物，落 build/Terminal.app）
-#   make deb     打包 rootless 越狱 deb -> out/Terminal_1.0.4_iphoneos-arm64.deb
+#   make deb     打包 rootless 越狱 deb -> out/Terminal_1.0.5_iphoneos-arm64.deb
 #
 #   make test    主机端核心单元测试（不需要模拟器，也不需要真机）
 #   make dump    主机端联调工具：起真实 Shell，打印最终屏幕
@@ -15,10 +15,13 @@
 # 变量：VERSION / MIN_IOS / ARCHS / DEVICE 均可在命令行覆盖。
 
 # ---------------- 项目信息 ----------------
-APP_NAME   := Terminal
-BUNDLE_ID  := com.malacaihongpi.terminal
-VERSION    := 1.0.4
-MAINTAINER := FPS1024 <ceaser.k.w@outlook.com>
+APP_NAME    := Terminal
+# App 的 CFBundleIdentifier；1.0.5 起 deb 不再拿它当包名，只用来顶掉老包
+BUNDLE_ID   := com.malacaihongpi.terminal
+# deb 的 Package 字段：短名字，Sileo / dpkg 里认的就是它
+DEB_PACKAGE := terminal
+VERSION     := 1.0.5
+MAINTAINER  := FPS1024 <ceaser.k.w@outlook.com>
 
 # ---------------- 工具链 ----------------
 CC       ?= clang
@@ -101,7 +104,8 @@ all: deb
 ios: check-sdk icons $(APP_BUNDLE)
 
 deb: ios
-	@APP_NAME='$(APP_NAME)' BUNDLE_ID='$(BUNDLE_ID)' VERSION='$(VERSION)' \
+	@APP_NAME='$(APP_NAME)' PACKAGE='$(DEB_PACKAGE)' OLD_PACKAGE='$(BUNDLE_ID)' \
+	 VERSION='$(VERSION)' \
 	 DEB_ARCH='$(DEB_ARCH)' MAINTAINER='$(MAINTAINER)' \
 	 APP_DIR='$(APP_BUNDLE)' OUT_DEB='$(DEB_PKG)' WORK='$(DEB_WORK)' \
 	 sh $(PKG_DIR)/mkdeb.sh

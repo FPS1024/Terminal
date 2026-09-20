@@ -13,8 +13,13 @@
 set -e
 
 APP_NAME=${APP_NAME:-Terminal}
-BUNDLE_ID=${BUNDLE_ID:-com.malacaihongpi.terminal}
-VERSION=${VERSION:-1.0.4}
+# deb 的包名（Sileo / dpkg 里认的那个标识）。不用 bundle id：
+# bundle id 是 App 自己的事，包名越短越干净，Sileo 里的升级判断也只看它。
+PACKAGE=${PACKAGE:-terminal}
+# 老版本的包名，用来把旧包顶掉（改名之后不写 Replaces 的话，
+# 新包会被 dpkg 判成"想覆盖别人拥有的文件"而装不上）
+OLD_PACKAGE=${OLD_PACKAGE:-com.malacaihongpi.terminal}
+VERSION=${VERSION:-1.0.5}
 DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
 MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 
@@ -40,7 +45,7 @@ find "$WORK/root" -name '.DS_Store' -delete 2>/dev/null || true
 # ---- control ----
 SIZE=$(du -sk "$WORK/root" | awk '{print $1}')
 cat > "$WORK/control/control" <<CONTROL
-Package: $BUNDLE_ID
+Package: $PACKAGE
 Name: $APP_NAME
 Version: $VERSION
 Architecture: $DEB_ARCH
@@ -52,6 +57,8 @@ Author: $MAINTAINER
 Section: Utilities
 Priority: optional
 Installed-Size: $SIZE
+Replaces: $OLD_PACKAGE
+Conflicts: $OLD_PACKAGE
 Depends: firmware (>= 12.0)
 CONTROL
 
