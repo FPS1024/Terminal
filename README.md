@@ -107,7 +107,7 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 ```sh
 make            # 打印可用目标
 make ios        # 编译 App（中间产物）     -> build/Terminal.app
-make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.6_iphoneos-arm64.deb
+make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.7_iphoneos-arm64.deb
 ```
 
 中间文件统一放在 `build/`，**发布产物只有一个 deb，放在 `out/`**：
@@ -115,12 +115,12 @@ make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.6_iphoneos-ar
 | 路径 | 内容 |
 | --- | --- |
 | `build/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名），中间产物 |
-| `out/Terminal_1.0.6_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `out/Terminal_1.0.7_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
 | `build/obj/`、`build/icons/`、`build/deb/` | 目标文件、图标、打包临时目录 |
 
 两个目录都不纳入版本控制。`make deb` 只产出 rootless 一种包，同一台构建机上重复打包
 结果字节一致，便于核对 Release 校验值，收尾会打印 deb 的 SHA256。
-版本号可在命令行覆盖，例如 `make deb VERSION=1.0.6`。
+版本号可在命令行覆盖，例如 `make deb VERSION=1.0.7`。
 
 主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
 
@@ -141,13 +141,14 @@ make dump          # 主机端联调工具：启动真实 Shell 并输出最终�
 
 ```sh
 make deb
-# 把 out/Terminal_1.0.6_iphoneos-arm64.deb 传到设备后执行：
-dpkg -i Terminal_1.0.6_iphoneos-arm64.deb
+# 把 out/Terminal_1.0.7_iphoneos-arm64.deb 传到设备后执行：
+dpkg -i Terminal_1.0.7_iphoneos-arm64.deb
 ```
 
 安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` / `postrm` 只执行 `uicache`
-登记或注销图标，**不会**主动重启 SpringBoard：装完之后按 Sileo 提示的
-「重启 SpringBoard」即可，什么时候重启由你决定。
+登记或注销图标，**不会**主动重启 SpringBoard；它们会往 Sileo / Cydia 传进来的文件
+描述符（环境变量 `$SILEO` / `$CYDIA`，形如 `6 1`）写一行 `finish:reload`，于是装完
+之后由 Sileo 给出「重启 SpringBoard」按钮，按不按由你决定。
 
 deb 的包名（`Package:`）是 `terminal`，不是 App 的 bundle id。1.0.5 之前叫
 `com.malacaihongpi.terminal`，改名之后新包用 `Replaces:` / `Conflicts:` 把旧包顶掉，

@@ -3,7 +3,8 @@
 # 把 build/Terminal.app 打成 rootless 越狱用的 .deb。
 #
 #   - 只产出 rootless 一种包：安装到 /var/jb/Applications/Terminal.app
-#   - postinst/postrm 不主动重启 SpringBoard，交给 Sileo 装完之后的那个按钮
+#   - postinst/postrm 不主动重启 SpringBoard：往 $SILEO / $CYDIA 给的文件描述符写
+#     finish:reload，由 Sileo 在装完之后给出「重启 SpringBoard」按钮
 #   - 架构标记为 iphoneos-arm64（Dopamine / Palera1n 等 rootless 越狱）
 #   - 构建机上没有 dpkg，所以自己拼 ar 归档，不依赖 dpkg-deb
 #   - 归档不带 gzip 时间戳，同样的输入会得到同样的包（方便 Release 校验）
@@ -20,7 +21,7 @@ PACKAGE=${PACKAGE:-terminal}
 # 老版本的包名，用来把旧包顶掉（改名之后不写 Replaces 的话，
 # 新包会被 dpkg 判成"想覆盖别人拥有的文件"而装不上）
 OLD_PACKAGE=${OLD_PACKAGE:-com.malacaihongpi.terminal}
-VERSION=${VERSION:-1.0.6}
+VERSION=${VERSION:-1.0.7}
 DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
 MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 
@@ -70,15 +71,21 @@ JB=""
 [ -d /var/jb ] && JB=/var/jb
 APP="$JB/Applications/Terminal.app"
 [ -d "$APP" ] || APP=/Applications/Terminal.app
-# 只登记图标，不主动重启 SpringBoard：装完由 Sileo 自己给出「重启 SpringBoard」
-# 那个按钮，用户什么时候按由用户决定 —— 别人家的包怎么走，我们也怎么走
+# 只登记图标，不自己重启 SpringBoard
 for U in "$JB/usr/bin/uicache" /usr/bin/uicache; do
     if [ -x "$U" ]; then
         "$U" -a >/dev/null 2>&1 || "$U" -p "$APP" >/dev/null 2>&1 || true
         break
     fi
 done
-echo "Terminal: 图标已登记，重新载入 SpringBoard 之后出现"
+# 让 Sileo / Cydia 在安装结束之后给出「重启 SpringBoard」按钮，按不按由用户决定。
+# 约定：往它传进来的那个文件描述符写一行 finish:reload；环境变量形如 "6 1"
+# （fd + 级别），所以只取前面那段。fd 没开（比如手动 dpkg -i）就安静跳过。
+FRONTEND="${SILEO-}"; [ -n "$FRONTEND" ] || FRONTEND="${CYDIA-}"
+if [ -n "$FRONTEND" ]; then
+    { echo "finish:reload" >&"${FRONTEND%% *}"; } 2>/dev/null || true
+fi
+echo "Terminal: 图标已登记，重启 SpringBoard 之后出现"
 exit 0
 POSTINST
 
@@ -90,7 +97,11 @@ JB=""
 for U in "$JB/usr/bin/uicache" /usr/bin/uicache; do
     [ -x "$U" ] && { "$U" -a >/dev/null 2>&1 || true; break; }
 done
-echo "Terminal: 图标已注销，重新载入 SpringBoard 之后消失"
+FRONTEND="${SILEO-}"; [ -n "$FRONTEND" ] || FRONTEND="${CYDIA-}"
+if [ -n "$FRONTEND" ]; then
+    { echo "finish:reload" >&"${FRONTEND%% *}"; } 2>/dev/null || true
+fi
+echo "Terminal: 图标已注销，重启 SpringBoard 之后消失"
 exit 0
 POSTRM
 chmod 0755 "$WORK/control/postinst" "$WORK/control/postrm"

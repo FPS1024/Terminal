@@ -4,7 +4,7 @@
 #           中间产物全部落在 build/，发布产物只有一个 deb，落在 out/。
 #
 #   make ios     编译 App（中间产物，落 build/Terminal.app）
-#   make deb     打包 rootless 越狱 deb -> out/Terminal_1.0.6_iphoneos-arm64.deb
+#   make deb     打包 rootless 越狱 deb -> out/Terminal_1.0.7_iphoneos-arm64.deb
 #
 #   make test    主机端核心单元测试（不需要模拟器，也不需要真机）
 #   make dump    主机端联调工具：起真实 Shell，打印最终屏幕
@@ -20,7 +20,7 @@ APP_NAME    := Terminal
 BUNDLE_ID   := com.malacaihongpi.terminal
 # deb 的 Package 字段：短名字，Sileo / dpkg 里认的就是它
 DEB_PACKAGE := terminal
-VERSION     := 1.0.6
+VERSION     := 1.0.7
 MAINTAINER  := FPS1024 <ceaser.k.w@outlook.com>
 
 # ---------------- 工具链 ----------------
