@@ -107,7 +107,7 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 ```sh
 make            # 打印可用目标
 make ios        # 编译 App（中间产物）     -> build/Terminal.app
-make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.3_iphoneos-arm64.deb
+make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.4_iphoneos-arm64.deb
 ```
 
 中间文件统一放在 `build/`，**发布产物只有一个 deb，放在 `out/`**：
@@ -115,12 +115,12 @@ make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.3_iphoneos-ar
 | 路径 | 内容 |
 | --- | --- |
 | `build/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名），中间产物 |
-| `out/Terminal_1.0.3_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `out/Terminal_1.0.4_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
 | `build/obj/`、`build/icons/`、`build/deb/` | 目标文件、图标、打包临时目录 |
 
 两个目录都不纳入版本控制。`make deb` 只产出 rootless 一种包，同一台构建机上重复打包
 结果字节一致，便于核对 Release 校验值，收尾会打印 deb 的 SHA256。
-版本号可在命令行覆盖，例如 `make deb VERSION=1.0.3`。
+版本号可在命令行覆盖，例如 `make deb VERSION=1.0.4`。
 
 主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
 
@@ -141,8 +141,8 @@ make dump          # 主机端联调工具：启动真实 Shell 并输出最终�
 
 ```sh
 make deb
-# 把 out/Terminal_1.0.3_iphoneos-arm64.deb 传到设备后执行：
-dpkg -i Terminal_1.0.3_iphoneos-arm64.deb
+# 把 out/Terminal_1.0.4_iphoneos-arm64.deb 传到设备后执行：
+dpkg -i Terminal_1.0.4_iphoneos-arm64.deb
 ```
 
 安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` 脚本会自动执行 `uicache`
@@ -170,6 +170,10 @@ make install DEVICE=root@192.168.1.23
    Shell。按下空格、回车或选择候选词后，文本才会写入 PTY。
 4. 如需在终端内快速切换中英文，可使用系统键盘的地球键。也可在设置中启用
    「纯 ASCII 键盘」，此时默认使用英文布局（拼音输入法基于 ASCII 键盘，仍可正常使用）。
+
+终端的输入视图关闭了 iOS 的自动更正、拼写检查与「智能标点」。最后一项会把按键改写掉：
+连按两个 `-` 变成一个长破折号 `—`，直引号变成弯引号，`...` 变成 `…`。这层改写发生在
+字符送进 App 之前，而终端要的是原样透传，所以全部关掉 —— 现在 `--` 就是两个 `-`。
 
 若中文显示为方块或列宽异常，通常是字体名称不正确，可在设置中切换为 `PingFang SC`
 或 `Hiragino Sans GB`。
