@@ -1924,7 +1924,8 @@ int vt_key_encode(Vt *vt, int key, int mods, uint32_t ch, char *out, size_t outs
         app_key(out, outsz, &n, seq, seq); return n;
     case VK_ESC: out[n++] = 0x1B; out[n] = 0; return n;
     case VK_TAB:
-        if (mods & VTM_SHIFT) { memcpy(out, "\x1b[Z", 3); return 3; }
+        /* 连结尾的 NUL 一起拷：调用方虽然按长度发字节，但别留个没结束的串 */
+        if (mods & VTM_SHIFT) { memcpy(out, "\x1b[Z", 4); return 3; }
         out[n++] = 0x09; out[n] = 0; return n;
     case VK_ENTER:
         if (mods & VTM_ALT) { out[n++] = 0x1B; }

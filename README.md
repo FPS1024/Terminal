@@ -107,7 +107,7 @@ Terminal 是一个为越狱 iOS 设备实现的终端模拟器与 Shell 宿主�
 ```sh
 make            # 打印可用目标
 make ios        # 编译 App（中间产物）     -> build/Terminal.app
-make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.7_iphoneos-arm64.deb
+make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.8_iphoneos-arm64.deb
 ```
 
 中间文件统一放在 `build/`，**发布产物只有一个 deb，放在 `out/`**：
@@ -115,12 +115,12 @@ make deb        # 打包 rootless 越狱 deb   -> out/Terminal_1.0.7_iphoneos-ar
 | 路径 | 内容 |
 | --- | --- |
 | `build/Terminal.app` | 编译好的 App（arm64，最低 iOS 12，已用 `ldid` 伪签名），中间产物 |
-| `out/Terminal_1.0.7_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
+| `out/Terminal_1.0.8_iphoneos-arm64.deb` | rootless 越狱安装包，安装至 `/var/jb/Applications` |
 | `build/obj/`、`build/icons/`、`build/deb/` | 目标文件、图标、打包临时目录 |
 
 两个目录都不纳入版本控制。`make deb` 只产出 rootless 一种包，同一台构建机上重复打包
 结果字节一致，便于核对 Release 校验值，收尾会打印 deb 的 SHA256。
-版本号可在命令行覆盖，例如 `make deb VERSION=1.0.7`。
+版本号可在命令行覆盖，例如 `make deb VERSION=1.0.8`。
 
 主机端目标不依赖 iOS 工具链，可以随时验证核心逻辑：
 
@@ -141,8 +141,8 @@ make dump          # 主机端联调工具：启动真实 Shell 并输出最终�
 
 ```sh
 make deb
-# 把 out/Terminal_1.0.7_iphoneos-arm64.deb 传到设备后执行：
-dpkg -i Terminal_1.0.7_iphoneos-arm64.deb
+# 把 out/Terminal_1.0.8_iphoneos-arm64.deb 传到设备后执行：
+dpkg -i Terminal_1.0.8_iphoneos-arm64.deb
 ```
 
 安装路径为 `/var/jb/Applications/Terminal.app`。`postinst` / `postrm` 只执行 `uicache`
@@ -174,7 +174,9 @@ make install DEVICE=root@192.168.1.23
 1. 确认系统已启用中文键盘（设置 → 通用 → 键盘 → 键盘 → 添加「简体中文 - 拼音」）。
 2. 在终端中点击以唤起键盘，切换至拼音键盘后正常输入，候选条将显示在键盘上方。
 3. 候选条中尚未上屏的字母属于预编辑内容，绘制于光标位置并带下划线，不会被发送至
-   Shell。按下空格、回车或选择候选词后，文本才会写入 PTY。
+   Shell。按下空格、回车或选择候选词后，文本才会写入 PTY。若这时直接按 `tab`、`^C`
+   或方向键，终端会先把这串预编辑内容上屏，再发送该功能键 —— 否则屏幕上写着 `pyt`、
+   Shell 的命令行却是空的，按 `tab` 自然补全不出 `python`。
 4. 如需在终端内快速切换中英文，可使用系统键盘的地球键。也可在设置中启用
    「纯 ASCII 键盘」，此时默认使用英文布局（拼音输入法基于 ASCII 键盘，仍可正常使用）。
 
@@ -215,7 +217,13 @@ make install DEVICE=root@192.168.1.23
 | 快捷键条 `ctrl` 后按 `c` | 等价于 `Ctrl-C` |
 
 硬件键盘可直接使用（需 Lightning/USB 转接器或蓝牙连接）。方向键、`esc`、`tab`、
-`Ctrl-<字母>` 与 `Alt-<字符>` 均受支持。
+`shift+tab`、`Ctrl-<字母>` 与 `Alt-<字符>` 均受支持。其中 `tab` / `shift+tab` 由 App
+显式注册为按键命令（分别发送 `0x09` 与 `ESC [ Z`），否则 iOS 13.4 之后系统会把它
+当成「焦点导航」键，按键根本到不了 Shell。
+
+补全本身是 Shell 的能力，不是终端的：`tab` 只是把 `0x09` 原样送进 PTY，由 bash / zsh
+自己决定补全成什么。因此若 Shell 找不到候选（例如设备上并没有装 `python`，或者前缀有
+歧义），按 `tab` 不会有任何可见变化，最多响一声铃 —— 这属于 Shell 的正常行为。
 
 ### 5.3 配置文件 `~/.terminalrc`
 

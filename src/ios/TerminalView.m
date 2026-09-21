@@ -982,6 +982,28 @@ static BOOL TermIsWordCp(uint32_t c)
 
 - (UIView *)inputAccessoryView { return self.keyBar; }
 
+/*
+ * 硬件键盘的 tab 必须自己声明 keyCommand。iOS 13.4 之后系统把 tab 当成「焦点
+ * 导航」键，不声明的话它到不了这里，PTY 自然收不到 0x09；shift+tab 同理。
+ * iOS 15 起还要 wantsPriorityOverSystemBehavior 才能抢在系统行为前面，
+ * 低版本系统没有这个属性，跳过即可。
+ */
+static UIKeyCommand *TermTabCommand(UIKeyModifierFlags flags, SEL action)
+{
+    UIKeyCommand *c = [UIKeyCommand keyCommandWithInput:@"\t" modifierFlags:flags action:action];
+    if (@available(iOS 15.0, *)) c.wantsPriorityOverSystemBehavior = YES;
+    return c;
+}
+
+- (NSArray<UIKeyCommand *> *)keyCommands
+{
+    return @[ TermTabCommand(0, @selector(hwKeyTab)),
+              TermTabCommand(UIKeyModifierShift, @selector(hwKeyShiftTab)) ];
+}
+
+- (void)hwKeyTab { [self sendKey:VK_TAB mods:0 ch:0]; }
+- (void)hwKeyShiftTab { [self sendKey:VK_TAB mods:VTM_SHIFT ch:0]; }
+
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
     if (action == @selector(copy:) || action == @selector(cut:)) return _hasSelection;
@@ -1242,6 +1264,19 @@ static BOOL TermIsWordCp(uint32_t c)
 - (void)sendKey:(int)key mods:(int)mods ch:(uint32_t)ch
 {
     if (!self.vt) return;
+    /*
+     * 输入法还在组词（预编辑）时，屏幕上那串字并没有进 shell。此时按 tab、^C
+     * 或方向键，shell 收到的按键和屏幕上看到的命令行是对不上的：屏幕写着
+     * "pyt"，shell 里其实是空的，按 tab 自然什么也补全不出来。
+     * 所以先把没上屏的组词发下去，再发按键。
+     */
+    if (_markedText.length) {
+        NSString *composed = [_markedText copy];
+        _committingInsert = YES;      /* 让 unmarkText 别排队兜底那条，文本我们自己发 */
+        [self unmarkText];
+        _committingInsert = NO;
+        if (composed.length) [self sendString:composed];
+    }
     int m = mods;
     if (key == VK_CHAR) {
         if (_stickyCtrl) m |= VTM_CTRL;

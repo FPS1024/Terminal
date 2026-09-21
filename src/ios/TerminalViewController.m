@@ -122,6 +122,7 @@
     UIScrollView *sv = [[UIScrollView alloc] initWithFrame:bar.bounds];
     sv.showsHorizontalScrollIndicator = NO;
     sv.alwaysBounceHorizontal = YES;
+    sv.delaysContentTouches = NO;   /* 快捷键要一按就发，别等滚动视图确认手势 */
     sv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [bar addSubview:sv];
 

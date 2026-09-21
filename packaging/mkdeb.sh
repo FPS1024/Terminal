@@ -21,7 +21,7 @@ PACKAGE=${PACKAGE:-terminal}
 # 老版本的包名，用来把旧包顶掉（改名之后不写 Replaces 的话，
 # 新包会被 dpkg 判成"想覆盖别人拥有的文件"而装不上）
 OLD_PACKAGE=${OLD_PACKAGE:-com.malacaihongpi.terminal}
-VERSION=${VERSION:-1.0.7}
+VERSION=${VERSION:-1.0.8}
 DEB_ARCH=${DEB_ARCH:-iphoneos-arm64}
 MAINTAINER=${MAINTAINER:-FPS1024 <ceaser.k.w@outlook.com>}
 

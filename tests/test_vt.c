@@ -720,6 +720,12 @@ static void test_keys(void)
     CHECK_STR(b, "\x7f");
     vt_key_encode(f.vt, VK_PAGEUP, VTM_SHIFT, 0, b, sizeof(b));
     CHECK_STR(b, "\x1b[5;2~");
+    CHECK_INT(vt_key_encode(f.vt, VK_TAB, 0, 0, b, sizeof(b)), 1);
+    CHECK_STR(b, "\t");
+    vt_key_encode(f.vt, VK_TAB, VTM_SHIFT, 0, b, sizeof(b));
+    CHECK_STR(b, "\x1b[Z");
+    vt_key_encode(f.vt, VK_BACKTAB, 0, 0, b, sizeof(b));
+    CHECK_STR(b, "\x1b[Z");
     fix_free(&f);
 }
 
