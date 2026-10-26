@@ -13,6 +13,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check dispatch secret
+        run: echo "SILEO_DISPATCH_TOKEN present: ${{ secrets.SILEO_DISPATCH_TOKEN != '' }}"
+
       - name: Dispatch Sileo index update
         env:
           GH_TOKEN: ${{ secrets.SILEO_DISPATCH_TOKEN }}
